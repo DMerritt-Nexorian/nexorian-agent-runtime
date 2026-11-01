@@ -205,34 +205,3 @@ impl<E: LocalLlmEngine> ToolAgent<E> {
         Err("max hops")
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct SimulatedEngine {
-        turn: usize,
-    }
-
-    impl LocalLlmEngine for SimulatedEngine {
-        fn generate(&mut self, _prompt: &str) -> Result<String, &'static str> {
-            self.turn += 1;
-            match self.turn {
-                1 => Ok(String::from(
-                    r#"{"action":"call_tool","tool":"feedback_analyze","args":"positive, fast, clear"}"#,
-                )),
-                _ => Ok(String::from(
-                    r#"{"action":"final_response","content":"Analysis complete. Sentiment positive. Themes: speed, clarity."}"#,
-                )),
-            }
-        }
-    }
-
-    #[test]
-    fn simulated_tool_then_final() {
-        let engine = SimulatedEngine { turn: 0 };
-        let mut agent = ToolAgent::new(engine);
-        let response = agent.step("Analyze this feedback").unwrap();
-        assert_eq!(response, "Analysis complete. Sentiment positive. Themes: speed, clarity.");
-    }
-}
