@@ -70,12 +70,13 @@ impl crate::LocalLlmEngine for LocalHttpEngine {
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
+    use crate::LocalLlmEngine;
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::thread;
     use std::time::Duration;
 
-    fn mock_server(status: &str, body: &'static str, delay: Duration) -> String {
+    fn mock_server(status: &'static str, body: &'static str, delay: Duration) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock server");
         let address = listener.local_addr().expect("mock address");
         thread::spawn(move || {
