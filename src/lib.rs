@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
 
@@ -44,23 +44,8 @@ pub trait CustomerTool {
     fn execute(&self, args: &str) -> Result<String, &'static str>;
 }
 
-/// Local engine that talks to Ollama (or any compatible endpoint) on your machine.
-/// No cloud. Run `ollama serve` first.
-pub struct LocalHttpEngine {
-    pub endpoint: String,
-    pub model: String,
-}
-
-impl LocalLlmEngine for LocalHttpEngine {
-    fn generate(&mut self, prompt: &str) -> Result<String, &'static str> {
-        // This is the only place that needs a real HTTP call.
-        // Because the crate is no_std, the actual network code lives in a small
-        // std helper you run beside it (see examples/ollama_bridge.rs or the
-        // comment block below). For now it returns a clear instruction.
-        let _ = (prompt, &self.endpoint, &self.model);
-        Err("start ollama and use the bridge example")
-    }
-}
+mod ollama;
+pub use ollama::LocalHttpEngine;
 
 fn field(json: &str, key: &str) -> Option<String> {
     let k = format!("\"{}\"", key);
