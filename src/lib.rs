@@ -50,8 +50,7 @@ fn field(json: &str, key: &str) -> Option<String> {
     let k = format!("\"{}\"", key);
     let after = json.find(&k).map(|i| &json[i + k.len()..])?;
     let val = after.find(':').map(|i| after[i + 1..].trim_start())?;
-    if val.starts_with('"') {
-        let body = &val[1..];
+    if let Some(body) = val.strip_prefix('"') {
         let mut esc = false;
         for (i, c) in body.char_indices() {
             if esc {
@@ -223,7 +222,7 @@ impl<E: LocalLlmEngine> ToolAgent<E> {
             p.push_str(tag);
             p.push_str("|>\n");
             p.push_str(&m.content);
-            p.push_str("\n");
+            p.push('\n');
         }
         p.push_str("<|assistant|>\n");
         p
