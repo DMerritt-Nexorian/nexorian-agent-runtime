@@ -53,10 +53,6 @@ pub struct LocalHttpEngine {
 
 impl LocalLlmEngine for LocalHttpEngine {
     fn generate(&mut self, prompt: &str) -> Result<String, &'static str> {
-        // This is the only place that needs a real HTTP call.
-        // Because the crate is no_std, the actual network code lives in a small
-        // std helper you run beside it (see examples/ollama_bridge.rs or the
-        // comment block below). For now it returns a clear instruction.
         let _ = (prompt, &self.endpoint, &self.model);
         Err("start ollama and use the bridge example")
     }
@@ -140,9 +136,61 @@ pub struct MeetingSummary;
 impl CustomerTool for MeetingSummary {
     fn name(&self) -> &'static str { "meeting_summary" }
     fn execute(&self, args: &str) -> Result<String, &'static str> {
+        let text = args.trim();
+        if text.is_empty() {
+            return Ok(r#"{"tool":"meeting_summary","error":"empty input"}"#.to_string());
+        }
+
+        let mut decisions = Vec::new();
+        let mut actions = Vec::new();
+        let mut attendees = Vec::new();
+
+        for line in text.lines() {
+            let l = line.trim();
+            if l.is_empty() { continue; }
+            let lower = l.to_lowercase();
+            if lower.contains("decided") || lower.contains("decision") || lower.contains("agreed") || lower.starts_with("- d") || lower.starts_with("*") && lower.contains("decide") {
+                decisions.push(l.to_string());
+            } else if lower.contains("action") || lower.contains("todo") || lower.contains("will ") || lower.contains("to do") || lower.starts_with("- a") || lower.starts_with("*") && (lower.contains("action") || lower.contains("will")) {
+                actions.push(l.to_string());
+            } else if lower.contains("attendee") || lower.contains("present") || lower.contains("joined") {
+                attendees.push(l.to_string());
+            }
+        }
+
+        // Fallback: if nothing matched, treat first 3 non-empty lines as key points
+        if decisions.is_empty() && actions.is_empty() {
+            for line in text.lines().filter(|l| !l.trim().is_empty()).take(3) {
+                decisions.push(line.trim().to_string());
+            }
+        }
+
+        let decisions_json = if decisions.is_empty() {
+            "[]".to_string()
+        } else {
+            format!(
+                "[{}]",
+                decisions.iter().map(|d| format!("\"{}\"", d.replace('"', "\\\""))).collect::<Vec<_>>().join(",")
+            )
+        };
+        let actions_json = if actions.is_empty() {
+            "[]".to_string()
+        } else {
+            format!(
+                "[{}]",
+                actions.iter().map(|a| format!("\"{}\"", a.replace('"', "\\\""))).collect::<Vec<_>>().join(",")
+            )
+        };
+
+        let preview = text.chars().take(120).collect::<String>().replace('"', "\\");
+
         Ok(format!(
-            "{{\"tool\":\"meeting_summary\",\"decisions\":[],\"action_items\":[],\"raw_len\":{}}}",
-            args.len()
+            "{{\"tool\":\"meeting_summary\",\"decisions\":{},\"action_items\":{},\"attendees_detected\":{},\"input_chars\":{},\"preview\":\"{}...\"}}",
+            decisions_json,
+            actions_json,
+            attendees.len(),
+            text.len(),
+            preview
         ))
     }
 }
