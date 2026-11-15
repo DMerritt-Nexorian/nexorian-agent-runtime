@@ -137,10 +137,7 @@ mod tests {
             Duration::from_millis(250),
         );
         let mut engine = LocalHttpEngine::new(endpoint, "llama3.2").with_timeout_ms(50);
-        assert_eq!(
-            engine.generate("prompt"),
-            Err("Ollama request timed out")
-        );
+        assert_eq!(engine.generate("prompt"), Err("Ollama request timed out"));
     }
 
     #[test]
@@ -148,8 +145,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
         let address = listener.local_addr().expect("local address");
         drop(listener);
-        let mut engine =
-            LocalHttpEngine::new(format!("http://{address}/api/generate"), "llama3.2");
+        let mut engine = LocalHttpEngine::new(format!("http://{address}/api/generate"), "llama3.2");
         assert_eq!(
             engine.generate("prompt"),
             Err("failed to connect to Ollama")
