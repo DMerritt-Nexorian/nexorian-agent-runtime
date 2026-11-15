@@ -8,7 +8,11 @@ pub struct LocalHttpEngine {
 
 impl LocalHttpEngine {
     pub fn new(endpoint: impl Into<String>, model: impl Into<String>) -> Self {
-        Self { endpoint: endpoint.into(), model: model.into(), timeout_ms: 30_000 }
+        Self {
+            endpoint: endpoint.into(),
+            model: model.into(),
+            timeout_ms: 30_000,
+        }
     }
 
     pub fn with_timeout_ms(mut self, timeout_ms: u64) -> Self {
@@ -29,15 +33,28 @@ impl crate::LocalLlmEngine for LocalHttpEngine {
             "prompt": prompt,
             "stream": false
         });
-        let response = client.post(&self.endpoint).json(&payload).send()
-            .map_err(|err| if err.is_timeout() { "Ollama request timed out" } else { "failed to connect to Ollama" })?;
+        let response = client
+            .post(&self.endpoint)
+            .json(&payload)
+            .send()
+            .map_err(|err| {
+                if err.is_timeout() {
+                    "Ollama request timed out"
+                } else {
+                    "failed to connect to Ollama"
+                }
+            })?;
         if !response.status().is_success() {
             return Err("Ollama returned a non-success HTTP status");
         }
-        let body = response.text().map_err(|_| "failed to read Ollama response")?;
-        let parsed: serde_json::Value = serde_json::from_str(&body)
-            .map_err(|_| "Ollama returned invalid JSON")?;
-        parsed.get("response").and_then(serde_json::Value::as_str)
+        let body = response
+            .text()
+            .map_err(|_| "failed to read Ollama response")?;
+        let parsed: serde_json::Value =
+            serde_json::from_str(&body).map_err(|_| "Ollama returned invalid JSON")?;
+        parsed
+            .get("response")
+            .and_then(serde_json::Value::as_str)
             .map(ToOwned::to_owned)
             .ok_or("Ollama response is missing the string 'response' field")
     }
@@ -79,30 +96,51 @@ mod tests {
 
     #[test]
     fn posts_ollama_payload_and_parses_response() {
-        let endpoint = mock_server("200 OK", r#"{"response":"hello from mock"}"#, Duration::ZERO);
+        let endpoint = mock_server(
+            "200 OK",
+            r#"{"response":"hello from mock"}"#,
+            Duration::ZERO,
+        );
         let mut engine = LocalHttpEngine::new(endpoint, "llama3.2");
         assert_eq!(engine.generate("say hello").unwrap(), "hello from mock");
     }
 
     #[test]
     fn reports_http_status_errors() {
-        let endpoint = mock_server("500 Internal Server Error", r#"{"error":"model unavailable"}"#, Duration::ZERO);
+        let endpoint = mock_server(
+            "500 Internal Server Error",
+            r#"{"error":"model unavailable"}"#,
+            Duration::ZERO,
+        );
         let mut engine = LocalHttpEngine::new(endpoint, "llama3.2");
-        assert_eq!(engine.generate("prompt"), Err("Ollama returned a non-success HTTP status"));
+        assert_eq!(
+            engine.generate("prompt"),
+            Err("Ollama returned a non-success HTTP status")
+        );
     }
 
     #[test]
     fn rejects_malformed_json() {
         let endpoint = mock_server("200 OK", "not-json", Duration::ZERO);
         let mut engine = LocalHttpEngine::new(endpoint, "llama3.2");
-        assert_eq!(engine.generate("prompt"), Err("Ollama returned invalid JSON"));
+        assert_eq!(
+            engine.generate("prompt"),
+            Err("Ollama returned invalid JSON")
+        );
     }
 
     #[test]
     fn enforces_connection_timeout() {
-        let endpoint = mock_server("200 OK", r#"{"response":"late"}"#, Duration::from_millis(250));
+        let endpoint = mock_server(
+            "200 OK",
+            r#"{"response":"late"}"#,
+            Duration::from_millis(250),
+        );
         let mut engine = LocalHttpEngine::new(endpoint, "llama3.2").with_timeout_ms(50);
-        assert_eq!(engine.generate("prompt"), Err("Ollama request timed out"));
+        assert_eq!(
+            engine.generate("prompt"),
+            Err("Ollama request timed out")
+        );
     }
 
     #[test]
@@ -110,7 +148,11 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
         let address = listener.local_addr().expect("local address");
         drop(listener);
-        let mut engine = LocalHttpEngine::new(format!("http://{address}/api/generate"), "llama3.2");
-        assert_eq!(engine.generate("prompt"), Err("failed to connect to Ollama"));
+        let mut engine =
+            LocalHttpEngine::new(format!("http://{address}/api/generate"), "llama3.2");
+        assert_eq!(
+            engine.generate("prompt"),
+            Err("failed to connect to Ollama")
+        );
     }
 }
