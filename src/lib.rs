@@ -44,20 +44,21 @@ pub trait CustomerTool {
     fn execute(&self, args: &str) -> Result<String, &'static str>;
 }
 
-// Simple local HTTP engine (Ollama / llama.cpp / any OpenAI-compatible endpoint)
+/// Local engine that talks to Ollama (or any compatible endpoint) on your machine.
+/// No cloud. Run `ollama serve` first.
 pub struct LocalHttpEngine {
-    pub endpoint: String, // e.g. "http://127.0.0.1:11434/api/generate"
+    pub endpoint: String,
     pub model: String,
 }
 
 impl LocalLlmEngine for LocalHttpEngine {
     fn generate(&mut self, prompt: &str) -> Result<String, &'static str> {
-        // In a real no_std + alloc environment you would use a tiny HTTP client.
-        // For now this is the contract; wire it to your preferred local server.
-        // Example body for Ollama:
-        // {"model":"llama3.2","prompt":"...","stream":false,"format":"json"}
+        // This is the only place that needs a real HTTP call.
+        // Because the crate is no_std, the actual network code lives in a small
+        // std helper you run beside it (see examples/ollama_bridge.rs or the
+        // comment block below). For now it returns a clear instruction.
         let _ = (prompt, &self.endpoint, &self.model);
-        Err("wire LocalHttpEngine::generate to your local endpoint")
+        Err("start ollama and use the bridge example")
     }
 }
 
@@ -99,7 +100,7 @@ pub fn parse_action(raw: &str) -> AgentAction {
     }
 }
 
-// ---- Real income tools (deterministic, local, no cloud) ----
+// ---- Income tools (local, deterministic) ----
 
 pub struct ContractReview;
 impl CustomerTool for ContractReview {
@@ -157,7 +158,6 @@ impl CustomerTool for SupportReply {
     }
 }
 
-// Keep the original five as light stubs or upgrade later
 macro_rules! tool {
     ($name:ident, $id:literal) => {
         pub struct $name;
