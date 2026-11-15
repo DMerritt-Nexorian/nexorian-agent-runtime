@@ -38,25 +38,28 @@ jobs:
     name: Llama 3.2 live inference
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      ollama:
+        image: ollama/ollama:latest
+        ports:
+          - 11434:11434
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Set up stable Rust
         uses: dtolnay/rust-toolchain@stable
-      - name: Install Ollama
-        shell: bash
-        run: curl -fsSL https://ollama.com/install.sh | sh
-      - name: Start Ollama and pull Llama 3.2
+      - name: Wait for Ollama and pull Llama 3.2
+        env:
+          OLLAMA_CONTAINER_ID: ${{ job.services.ollama.id }}
         shell: bash
         run: |
           set -euo pipefail
-          ollama serve > /tmp/ollama.log 2>&1 &
           for attempt in $(seq 1 60); do
             if curl --silent --fail http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
             sleep 2
           done
           curl --silent --fail http://127.0.0.1:11434/api/tags >/dev/null
-          ollama pull llama3.2
+          docker exec "$OLLAMA_CONTAINER_ID" ollama pull llama3.2
       - name: Verify real Llama 3.2 inference
         env:
           OLLAMA_MODEL: llama3.2
