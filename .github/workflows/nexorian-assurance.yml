@@ -12,62 +12,56 @@ concurrency:
   group: assurance-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  verify:
-    name: Build and static verification
+  rust:
+    name: Rust format, lint, build and tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Set up Node.js
-        if: hashFiles('package.json') != ''
-        uses: actions/setup-node@v4
+      - name: Set up stable Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: '20'
-      - name: Install Node dependencies
-        if: hashFiles('package.json') != ''
+          components: rustfmt, clippy
+      - name: Generate dependency lockfile
+        run: cargo generate-lockfile
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Compile all targets
+        run: cargo check --all-targets --all-features
+      - name: Run unit and mock-server tests
+        run: cargo test --all-targets --all-features
+
+  ollama-inference:
+    name: Llama 3.2 live inference
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      ollama:
+        image: ollama/ollama:latest
+        ports:
+          - 11434:11434
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up stable Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Wait for Ollama and pull Llama 3.2
+        env:
+          OLLAMA_CONTAINER_ID: ${{ job.services.ollama.id }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -f package-lock.json ]]; then
-            npm ci --ignore-scripts --no-audit --no-fund
-          elif [[ -f pnpm-lock.yaml ]]; then
-            corepack enable
-            pnpm install --frozen-lockfile --ignore-scripts
-          elif [[ -f yarn.lock ]]; then
-            corepack enable
-            yarn install --frozen-lockfile --ignore-scripts
-          else
-            npm install --ignore-scripts --no-package-lock --no-audit --no-fund
-          fi
-      - name: Run Node project checks
-        if: hashFiles('package.json') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm run test --if-present
-          npm run lint --if-present
-          npm run typecheck --if-present
-          npm run build --if-present
-      - name: Set up Python
-        if: hashFiles('**/*.py') != ''
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      - name: Compile Python sources
-        if: hashFiles('**/*.py') != ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          find . -type f -name '*.py' -not -path './.git/*' -not -path './.venv/*' -print0 | xargs -0 -r python -m py_compile
-      - name: Run Go tests
-        if: hashFiles('go.mod') != ''
-        run: go test ./...
-      - name: Run Rust tests
-        if: hashFiles('Cargo.toml') != ''
-        run: cargo test --locked
-      - name: Verification scope note
-        if: always()
-        run: |
-          echo "This workflow runs only checks supported by manifests present in this repository."
-          echo "A green run does not establish production deployment, security certification, or functional correctness beyond the executed checks."
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 2
+          done
+          curl --silent --fail http://127.0.0.1:11434/api/tags >/dev/null
+          docker exec "$OLLAMA_CONTAINER_ID" ollama pull llama3.2
+      - name: Verify real Llama 3.2 inference
+        env:
+          OLLAMA_MODEL: llama3.2
+          OLLAMA_ENDPOINT: http://127.0.0.1:11434/api/generate
+        run: cargo run --example ollama_smoke --features std

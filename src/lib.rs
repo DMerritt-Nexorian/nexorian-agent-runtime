@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 extern crate alloc;
 
@@ -7,8 +7,7 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-pub const SYSTEM_PROMPT: &str =
-    "You are a Nexorian operator. Respond only with strict JSON.\n\
+pub const SYSTEM_PROMPT: &str = "You are a Nexorian operator. Respond only with strict JSON.\n\
      Call tool: {\"action\":\"call_tool\",\"tool\":\"<name>\",\"args\":\"<input>\"}\n\
      Final: {\"action\":\"final_response\",\"content\":\"<text>\"}\n\
      Tools: content_create, write_draft, language_practice, task_break, feedback_analyze, \
@@ -44,30 +43,14 @@ pub trait CustomerTool {
     fn execute(&self, args: &str) -> Result<String, &'static str>;
 }
 
-/// Local engine that talks to Ollama (or any compatible endpoint) on your machine.
-/// No cloud. Run `ollama serve` first.
-pub struct LocalHttpEngine {
-    pub endpoint: String,
-    pub model: String,
-}
-
-impl LocalLlmEngine for LocalHttpEngine {
-    fn generate(&mut self, prompt: &str) -> Result<String, &'static str> {
-        // This is the only place that needs a real HTTP call.
-        // Because the crate is no_std, the actual network code lives in a small
-        // std helper you run beside it (see examples/ollama_bridge.rs or the
-        // comment block below). For now it returns a clear instruction.
-        let _ = (prompt, &self.endpoint, &self.model);
-        Err("start ollama and use the bridge example")
-    }
-}
+mod ollama;
+pub use ollama::LocalHttpEngine;
 
 fn field(json: &str, key: &str) -> Option<String> {
     let k = format!("\"{}\"", key);
     let after = json.find(&k).map(|i| &json[i + k.len()..])?;
     let val = after.find(':').map(|i| after[i + 1..].trim_start())?;
-    if val.starts_with('"') {
-        let body = &val[1..];
+    if let Some(body) = val.strip_prefix('"') {
         let mut esc = false;
         for (i, c) in body.char_indices() {
             if esc {
@@ -104,7 +87,9 @@ pub fn parse_action(raw: &str) -> AgentAction {
 
 pub struct ContractReview;
 impl CustomerTool for ContractReview {
-    fn name(&self) -> &'static str { "contract_review" }
+    fn name(&self) -> &'static str {
+        "contract_review"
+    }
     fn execute(&self, args: &str) -> Result<String, &'static str> {
         Ok(format!(
             "{{\"tool\":\"contract_review\",\"summary\":\"Reviewed {} chars. Flag high-risk clauses (indemnity, unlimited liability, auto-renew).\",\"input_preview\":\"{}...\"}}",
@@ -116,7 +101,9 @@ impl CustomerTool for ContractReview {
 
 pub struct CodeAudit;
 impl CustomerTool for CodeAudit {
-    fn name(&self) -> &'static str { "code_audit" }
+    fn name(&self) -> &'static str {
+        "code_audit"
+    }
     fn execute(&self, args: &str) -> Result<String, &'static str> {
         Ok(format!(
             "{{\"tool\":\"code_audit\",\"findings\":[\"Check for unsafe blocks\",\"Verify constant-time on crypto paths\",\"Confirm no_std where claimed\"],\"input_len\":{}}}",
@@ -127,7 +114,9 @@ impl CustomerTool for CodeAudit {
 
 pub struct ProposalWrite;
 impl CustomerTool for ProposalWrite {
-    fn name(&self) -> &'static str { "proposal_write" }
+    fn name(&self) -> &'static str {
+        "proposal_write"
+    }
     fn execute(&self, args: &str) -> Result<String, &'static str> {
         Ok(format!(
             "{{\"tool\":\"proposal_write\",\"draft\":\"Executive summary for: {}. Scope, deliverables, timeline, and fixed price.\"}}",
@@ -138,7 +127,9 @@ impl CustomerTool for ProposalWrite {
 
 pub struct MeetingSummary;
 impl CustomerTool for MeetingSummary {
-    fn name(&self) -> &'static str { "meeting_summary" }
+    fn name(&self) -> &'static str {
+        "meeting_summary"
+    }
     fn execute(&self, args: &str) -> Result<String, &'static str> {
         Ok(format!(
             "{{\"tool\":\"meeting_summary\",\"decisions\":[],\"action_items\":[],\"raw_len\":{}}}",
@@ -149,7 +140,9 @@ impl CustomerTool for MeetingSummary {
 
 pub struct SupportReply;
 impl CustomerTool for SupportReply {
-    fn name(&self) -> &'static str { "support_reply" }
+    fn name(&self) -> &'static str {
+        "support_reply"
+    }
     fn execute(&self, args: &str) -> Result<String, &'static str> {
         Ok(format!(
             "{{\"tool\":\"support_reply\",\"reply\":\"Thanks for reaching out. We reviewed your request regarding {}. Next step: ...\"}}",
@@ -162,9 +155,14 @@ macro_rules! tool {
     ($name:ident, $id:literal) => {
         pub struct $name;
         impl CustomerTool for $name {
-            fn name(&self) -> &'static str { $id }
+            fn name(&self) -> &'static str {
+                $id
+            }
             fn execute(&self, args: &str) -> Result<String, &'static str> {
-                Ok(format!("{{\"tool\":\"{}\",\"status\":\"completed\",\"input\":\"{}\"}}", $id, args))
+                Ok(format!(
+                    "{{\"tool\":\"{}\",\"status\":\"completed\",\"input\":\"{}\"}}",
+                    $id, args
+                ))
             }
         }
     };
@@ -224,7 +222,7 @@ impl<E: LocalLlmEngine> ToolAgent<E> {
             p.push_str(tag);
             p.push_str("|>\n");
             p.push_str(&m.content);
-            p.push_str("\n");
+            p.push('\n');
         }
         p.push_str("<|assistant|>\n");
         p
@@ -247,7 +245,10 @@ impl<E: LocalLlmEngine> ToolAgent<E> {
                         .tools
                         .iter()
                         .find(|t| t.name() == tool)
-                        .map(|t| t.execute(&args).unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e)))
+                        .map(|t| {
+                            t.execute(&args)
+                                .unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e))
+                        })
                         .unwrap_or_else(|| "{\"error\":\"unknown tool\"}".to_string());
                     self.history.push(Message {
                         role: Role::ToolResult,

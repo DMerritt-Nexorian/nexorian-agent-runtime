@@ -1,0 +1,28 @@
+[package]
+name = "nexorian-agent-runtime"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Lightweight Nexorian agent runtime with local Ollama inference"
+license = "UNLICENSED"
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+default = ["std"]
+std = ["dep:reqwest", "dep:serde_json"]
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[[example]]
+name = "ollama_bridge"
+path = "examples/ollama_bridge.rs"
+required-features = ["std"]
+
+[[example]]
+name = "ollama_smoke"
+path = "examples/ollama_smoke.rs"
+required-features = ["std"]
