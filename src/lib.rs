@@ -7,8 +7,7 @@ use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
-pub const SYSTEM_PROMPT: &str =
-    "You are a Nexorian operator. Respond only with strict JSON.\n\
+pub const SYSTEM_PROMPT: &str = "You are a Nexorian operator. Respond only with strict JSON.\n\
      Call tool: {\"action\":\"call_tool\",\"tool\":\"<name>\",\"args\":\"<input>\"}\n\
      Final: {\"action\":\"final_response\",\"content\":\"<text>\"}\n\
      Tools: content_create, write_draft, language_practice, task_break, feedback_analyze, \
@@ -89,7 +88,9 @@ pub fn parse_action(raw: &str) -> AgentAction {
 
 pub struct ContractReview;
 impl CustomerTool for ContractReview {
-    fn name(&self) -> &'static str { "contract_review" }
+    fn name(&self) -> &'static str {
+        "contract_review"
+    }
     fn execute(&self, args: &str) -> Result<String, &'static str> {
         Ok(format!(
             "{{\"tool\":\"contract_review\",\"summary\":\"Reviewed {} chars. Flag high-risk clauses (indemnity, unlimited liability, auto-renew).\",\"input_preview\":\"{}...\"}}",
@@ -101,7 +102,9 @@ impl CustomerTool for ContractReview {
 
 pub struct CodeAudit;
 impl CustomerTool for CodeAudit {
-    fn name(&self) -> &'static str { "code_audit" }
+    fn name(&self) -> &'static str {
+        "code_audit"
+    }
     fn execute(&self, args: &str) -> Result<String, &'static str> {
         Ok(format!(
             "{{\"tool\":\"code_audit\",\"findings\":[\"Check for unsafe blocks\",\"Verify constant-time on crypto paths\",\"Confirm no_std where claimed\"],\"input_len\":{}}}",
@@ -112,7 +115,9 @@ impl CustomerTool for CodeAudit {
 
 pub struct ProposalWrite;
 impl CustomerTool for ProposalWrite {
-    fn name(&self) -> &'static str { "proposal_write" }
+    fn name(&self) -> &'static str {
+        "proposal_write"
+    }
     fn execute(&self, args: &str) -> Result<String, &'static str> {
         Ok(format!(
             "{{\"tool\":\"proposal_write\",\"draft\":\"Executive summary for: {}. Scope, deliverables, timeline, and fixed price.\"}}",
@@ -123,7 +128,9 @@ impl CustomerTool for ProposalWrite {
 
 pub struct MeetingSummary;
 impl CustomerTool for MeetingSummary {
-    fn name(&self) -> &'static str { "meeting_summary" }
+    fn name(&self) -> &'static str {
+        "meeting_summary"
+    }
     fn execute(&self, args: &str) -> Result<String, &'static str> {
         Ok(format!(
             "{{\"tool\":\"meeting_summary\",\"decisions\":[],\"action_items\":[],\"raw_len\":{}}}",
@@ -134,7 +141,9 @@ impl CustomerTool for MeetingSummary {
 
 pub struct SupportReply;
 impl CustomerTool for SupportReply {
-    fn name(&self) -> &'static str { "support_reply" }
+    fn name(&self) -> &'static str {
+        "support_reply"
+    }
     fn execute(&self, args: &str) -> Result<String, &'static str> {
         Ok(format!(
             "{{\"tool\":\"support_reply\",\"reply\":\"Thanks for reaching out. We reviewed your request regarding {}. Next step: ...\"}}",
@@ -147,9 +156,14 @@ macro_rules! tool {
     ($name:ident, $id:literal) => {
         pub struct $name;
         impl CustomerTool for $name {
-            fn name(&self) -> &'static str { $id }
+            fn name(&self) -> &'static str {
+                $id
+            }
             fn execute(&self, args: &str) -> Result<String, &'static str> {
-                Ok(format!("{{\"tool\":\"{}\",\"status\":\"completed\",\"input\":\"{}\"}}", $id, args))
+                Ok(format!(
+                    "{{\"tool\":\"{}\",\"status\":\"completed\",\"input\":\"{}\"}}",
+                    $id, args
+                ))
             }
         }
     };
@@ -232,7 +246,10 @@ impl<E: LocalLlmEngine> ToolAgent<E> {
                         .tools
                         .iter()
                         .find(|t| t.name() == tool)
-                        .map(|t| t.execute(&args).unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e)))
+                        .map(|t| {
+                            t.execute(&args)
+                                .unwrap_or_else(|e| format!("{{\"error\":\"{}\"}}", e))
+                        })
                         .unwrap_or_else(|| "{\"error\":\"unknown tool\"}".to_string());
                     self.history.push(Message {
                         role: Role::ToolResult,
